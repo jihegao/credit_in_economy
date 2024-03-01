@@ -1,0 +1,282 @@
+;   issuer          contract          potential counterparty      new bidder
+;        |                                                         |
+;   issue-a-new -------invited-------------> receiver              |
+;        |             |                         |                 |
+;        |             |----|               |----|                 |
+;        |             |    activated <-- accept |                 |
+;        |             |                         |                 |
+;        |             open_for_bidding  <----- reject             |
+;        |             |                                           |
+;        | <-----------|---------------------------------------   make a bid
+;        |-----|
+;        |    reject --> open_for_bidding
+;      accept  -----------> activated
+
+
+
+people-own [
+  job      ; 
+  currency ; could be gold or other goods
+  skill    ; any ability to produce goods
+  property ; any goods and money
+]
+
+
+to setup-people
+  create-people 1 [
+    init-person (table:from-list (list (list "food" (50 + random 100))(list "tool" 1)(list "gold" 10)))
+    move-to one-of patches with [ land_type = "tool_land" ]
+    set currency "gold"
+  ]
+  create-people 1 [
+    init-person (table:from-list (list (list "food" 1000)(list "tool" 10)(list "gold" 1000)))
+    move-to one-of patches with [ land_type = "gold_land" ]
+    set currency "gold"
+  ]
+  create-people 12 [
+    init-person (table:from-list (list (list "food" (50 + random 100))(list "tool" 1)(list "gold" 10)))
+    move-to one-of patches with [ pxcor = 0 and land_type = "farm_land" and not any? turtles-here and not any? (turtles-at 0 1) and not any? (turtles-at 0 2) ]
+    set currency "gold"
+  ]
+end
+
+
+to init-person [ param-set ]
+  set color blue
+  set size 0.5
+  set shape "circle"
+  set property param-set
+end
+
+; people behavior:
+;  - consume 1 food per tick
+;  - produce goods based on their money and their goods
+;  - buy-some: buy some goods if in shortage
+;  - open-sell: put some extra goods open for sale 
+to people-behavior
+  ask people [
+    retrieve-timeout-contracts
+    
+    buy-shortage
+    
+    sell-surplus
+    
+    produce
+
+    consume
+    
+    update-label
+  ]
+end
+
+to retrieve-timeout-contracts
+  ask my_contracts with [ ticks - create_time > 10 ][ die ]
+end
+
+to buy-shortage
+  foreach ["food" "tool"] [ pname ->
+    let shortage_amount table:get dict_shortage_amount pname
+    if (get pname < shortage_amount) [
+      buy-some (list pname (shortage_amount * 2) )
+    ]
+  ]
+end
+
+to-report product_list_exclude_my_job
+  if not member? product_list job [ report product_list ]
+  report remove job product_list
+end
+
+to sell-surplus 
+  if table:has-key? dict_surplus_amount job [
+    let pname job 
+    let surplus_amount table:get dict_surplus_amount pname
+    
+    if get pname > surplus_amount 
+    [
+      ; sell to dealer
+      
+      
+      
+      
+      
+      
+      ; won't create new contract if same kind of demanding contract already exists
+      if (not any? my_contracts with [ name_of table:get term "offer" = pname ])[
+        let amount (table:get dict_shortage_amount pname)
+        let offer (list pname amount)
+        ; choose gold or other currency
+        ; adjust price based on market price and supply - demand relationship
+        let price (best_market_price (list pname currency))
+        
+        let demand (list currency (amount * price))
+        let c issue-a-contract table:from-list (list (list "demand" demand) (list "offer" offer) ) 
+      ]
+    ]
+  ]
+  
+end
+
+
+to-report get [goods]
+  report table:get-or-default property goods 0
+end
+
+
+
+
+
+; price option: limited price, or market price
+to buy-some [ demand ]
+  ; choose a product with minimum utility for trade
+  
+  ; first try to find a seller
+  let c nobody
+  
+  ifelse any? available_contracts_selling (name_of demand)
+  [
+    set c max-one-of available_contracts_selling name_of demand [ utility_cost_ratio ] ; looking for best price
+    attemp-to-accept c
+  ]
+  [
+    ; issue a demanding contract with a best price
+    let best_price best_market_price (list (name_of demand) currency)
+    let offer (list currency (best_price * amount_of demand))
+    
+    if (not any? my_contracts with [ table:get term "demand" = demand ])[
+      set c issue-a-contract table:from-list (list (list "demand" demand) (list "offer" offer))
+    ]
+  ]
+end
+
+
+
+to-report best_market_price [pname_pair]
+  let pname first pname_pair
+  let mprice get_market_price pname_pair
+  let price ifelse-value ( total_supply_of pname < 1 or total_demand_of pname > 0 )
+              [ precision (mprice * 1.1) 2 ]
+              [ precision (mprice * 0.9) 2 ]
+  report (precision price 3)
+end
+
+
+to-report get_market_price [ pname_currency_pair ]
+  if not table:has-key? market_price pname_currency_pair [
+    show (word "error: no price key: " pname_currency_pair)
+  ]
+  report table:get market_price pname_currency_pair
+end
+
+to-report p_utility
+  report "gold"
+  
+end
+
+
+to find-potential-counterparty
+  
+end
+
+to-report my_contracts
+  report contracts with [ issuer = myself and supplier = nobody ]
+end
+
+;to-report contracts_inbox ; incoming contract offers
+;  report contracts with [ member? myself receivers ]
+;end
+
+to-report available_contracts ; contracts created and have no supplier yet
+  report contracts with [ supplier = nobody ]
+end
+
+to-report available_contracts_selling [ goods_name ]
+  report available_contracts with [ name_of table:get term "offer" = goods_name ]
+end
+
+to attemp-to-accept [ c ]
+  ask c [
+    if (supplier = nobody)[
+      set supplier myself
+      ifelse (term_fulfilled = true)
+      [
+        add-state "closed" "true"
+        add-state "proceding" "true" 
+      ]
+      [ set supplier nobody ]
+    ]
+  ]
+end
+
+to attemp-to-accept-contracts [ contract_set ]
+  foreach contract_set [ c -> attemp-to-accept c ]
+end
+
+;to accept-contracts [ c_list ]
+;  ask (turtle-set c_list) [  ]
+;end
+
+to produce
+  set job choose_best_production_option
+  ifelse (production_value job >= 0)[
+    let rate run-result (table:get (table:get production_dict job) "production_rate_per_tick")
+    let p0 table:get property job
+    table:put property job p0 + rate
+  ][
+    set job "none"
+  ]
+end
+
+to consume
+  foreach product_list [
+    name -> 
+    ;"consuming_conditions":["job = gold", "job = food"],
+    let consuming (table:get consuming_dict name)
+    if ( not empty? filter [c -> (runresult c) = true] (table:get consuming "consuming_conditions") )[
+      let p0 table:get property name
+      let p1 (p0 - runresult (table:get consuming "consuming_rate_per_tick"))
+      table:put property name p1
+    ]
+  ]
+  if (get "food" <= 0)[ 
+    ask contracts with [issuer = myself ][ die ]
+    die 
+  ]
+end
+
+to-report choose_best_production_option
+  let best-choice first sort-by [[?1 ?2] -> production_value ?1 > production_value ?2 ] product_list
+  report best-choice
+end
+
+to-report production_value [ product_name ]
+  let resource_conditions table:get (table:get production_dict product_name ) "resources"
+  let meet_resource_conditions 
+           ifelse-value (not empty? filter [c -> (runresult c) = false] resource_conditions)
+           [ -999 ]
+           [ 10 * (my_demand_of product_name) + (total_demand_of product_name) ]
+  report meet_resource_conditions
+end
+
+to-report my_demand_of [pname]
+  report count contracts with [ supplier = nobody and issuer = myself and name_of (table:get term "demand") = pname]
+end
+
+to-report total_demand_of [pname]
+  report sum [ demand_value ] of contracts with [ supplier = nobody and name_of (table:get term "demand") = pname ]
+end
+
+to-report demand_value
+  report (amount_of table:get term "offer")
+end
+
+to-report total_supply_of [pname]
+  report count contracts with [ supplier = nobody and name_of (table:get term "offer") = pname]
+end
+
+to update-label
+  set label (word job "|" (precision (get "food") 1) "|" (precision (get "tool") 1) "|" (precision (get "gold") 1))
+  ;if length logs > max_logs_length [
+  ;  set logs (remove (first logs) logs)
+  ;]
+end

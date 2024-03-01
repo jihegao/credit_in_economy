@@ -1,0 +1,40 @@
+{
+    "records":[
+        {
+            "name":"food",
+            "production":{
+                "skill":"farming",
+                "resources":["land_type = \"farm_land\"", "get \"tool\" > 0"],
+                "production_rate_per_tick": "1.2"
+            },
+            "consuming":{
+                "consuming_conditions":["true"],
+                "consuming_rate_per_tick": "1"
+            }
+        },
+        {
+            "name":"gold",
+            "production":{
+                "skill":"mining",
+                "resources":["land_type = \"gold_land\"", "get \"tool\" > 0"],
+                "production_rate_per_tick": "0.01"
+            },
+            "consuming":{
+                "consuming_conditions":["false"]
+            }
+        },
+        {
+            "name":"tool",
+            "production":{
+                "skill":"none",
+                "resources":["land_type = \"tool_land\"", "get \"tool\" > 0"],
+                "production_rate_per_tick": "0.5"
+            },
+            "consuming":{
+                "consuming_conditions":["job = \"gold\"", "job = \"food\""],
+                "consuming_rate_per_tick": "0.01"
+            }
+        }
+    ]
+}
+

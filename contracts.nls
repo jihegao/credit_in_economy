@@ -1,0 +1,174 @@
+; https://ethereum.org/whitepaper
+; The state transition function APPLY(S,TX) -> S'
+;
+; package: {"type":"",""}
+
+; contract types:
+; - simple purchase ( A pay (package 1) to B, B deliver (package 2) to A)
+; - lending ( A borrow (package1) from B first, then A pays (package1) and an (interest)) to B in given dates)
+; - hiring ( A borrow goods (like tools, technologies and factories) from B first, then B pays money to A )
+
+; rights for counterparties:
+; - sign the contract
+; - approve the auto execution
+; - request to cancel the contract before execution
+; - request to terminate the execution
+; - approve or reject the requests from conterparty
+
+contracts-own [
+  issuer
+  supplier
+  ;receivers
+  bidders
+  term ; a dictionary includes
+  states ; created, waiting_receivers_decision, open_for_bidding, waiting_issuers_decision, activated, closed 
+  create_time
+]
+
+; let c (issue-a-contract [ ["demand" ["food" 9]] ["offer" ["gold" 1]] )
+to-report issue-a-contract [term_dict]
+  let p0 self
+  let c nobody
+  
+  hatch 1 [
+    set breed contracts
+    set issuer myself
+    set supplier nobody
+    ;set receivers no-turtles
+    set bidders no-turtles
+    set shape "square"
+    set create_time ticks
+    set color yellow
+    set xcor max-pxcor
+    set term term_dict
+    add-state "created" "false"
+    set label (word table:get term "demand" "<=>" table:get term "offer")
+    set c self
+  ]
+  report c
+end
+
+to created
+  
+end
+
+
+to contracts-update-status
+  ask contracts [
+    if state_name_of current_state = "closed" [ die ]
+    execute-state
+  ]
+end
+
+to proceding  
+  ifelse term_fulfilled != true [
+    clear-states
+    add-state "closed" "false"
+  ]
+  [
+    let transaction_to_issuer (table:get term "demand")
+    let transaction_to_supplier (table:get term "offer")
+    transfer transaction_to_issuer    supplier issuer
+    transfer transaction_to_supplier  issuer   supplier
+    create-link-with issuer
+    create-link-with supplier
+    update-log (list issuer supplier term)
+  ]
+end
+
+; src -> package des
+to transfer [ package src des ]
+  ask src [ 
+    let r0 (table:get property (name_of package))
+    table:put property (name_of package) (r0 - amount_of package) 
+  ]
+  ask des [ 
+    let r0 (table:get property (name_of package))
+    table:put property (name_of package) (r0 + amount_of package)
+  ]
+end
+
+to-report term_fulfilled
+  if supplier = nobody [ report "no supplier" ]
+  let buy table:get term "demand"
+  let pay table:get term "offer"
+  if ([get (name_of pay)] of issuer  < amount_of pay) [ report "issuer can't pay" ]
+  if ([get (name_of buy)] of supplier < amount_of buy) [ report "supplier can't deliver" ]
+  report true
+end
+
+to-report name_of [package]
+  report first package
+end
+
+to-report amount_of [package]
+  report last package
+end
+
+to update-log [ contract_content ]
+  set logs lput contract_content logs
+  print contract_content
+end
+
+; contract reporter 
+; these contracts have supplier equals nobody
+to-report utility_cost_ratio
+  let price amount_of table:get term "offer"
+  let demand amount_of table:get term "demand"
+  if price <= 0 [ report 999999 ]
+  report demand / price
+end
+
+
+
+; ==============
+; state machine API
+; ==============
+
+to execute-state
+  run state_name_of current_state
+  if runresult state_done current_state [remove-state current_state]
+end
+
+to-report current_state
+  if empty? states [ report "" ]
+  report first states
+end
+
+to-report state_name_of [sta]
+  if empty? sta [ report "" ]
+  report item 0 sta
+end
+
+to-report state_done [sta]
+  if empty? sta [ report "" ]
+  report item 1 sta
+end
+
+to remove-current-state
+  remove-state current_state
+end
+
+to clear-states
+  set states []
+  ;if show-logs? [show "TASKS CLEARED"]
+end
+
+to remove-state [sta]
+  set states remove sta states
+  ;if show-logs? [ show (word ticks "| ENTER STATE: " current_state) ]
+end
+
+to add-state [name done]
+  if not is-list? states [set states []]
+  set states fput (list name done) states
+  ;if show-logs? [ show (word ticks "| ADD STATE : " (list name done)) ]
+end
+
+to-report timeout [interval]
+  report (word "timeout_has_expired " ticks " " interval)
+end
+
+to-report timeout_has_expired [start interval]
+  report (start + interval < ticks )
+end
